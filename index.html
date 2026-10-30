@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ECOR vocal</title>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{--bg:#eef1f4;--panel:#fff;--ink:#14202e;--muted:#5b6878;--line:#d5dbe3;--accent:#e8a400;--accent-ink:#1b1300;--head:#cfe2f3;--new:#fff4cc;--warn:#b54708;--rec:#d92d20;--chip:#e6ebf1}
 *{box-sizing:border-box}
@@ -237,28 +236,39 @@ $("mic").onclick=()=>{ if(!rec) return;
 const CLIENT_ID="253065620481-rd4g7k7uck1qjdosc6jojuiq6f8tabte.apps.googleusercontent.com";
 const SHEET_ID="1vRpJ30Rp5iH9rhvMJ0o5VENc8wUInDtWmgblMwHQ4WQ";
 const API="https://sheets.googleapis.com/v4/spreadsheets/"+SHEET_ID;
-let token=null, tokenExp=0, tokenClient=null, onglet=null, pendingAuth=null;
-try{ const t=JSON.parse(sessionStorage.getItem("ecor_tok")||"null"); if(t&&t.exp>Date.now()+60000){ token=t.v; tokenExp=t.exp; } }catch(_){}
-function initGis(){
-  if(!(window.google&&google.accounts&&google.accounts.oauth2)){ setTimeout(initGis,200); return; }
-  tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:"https://www.googleapis.com/auth/spreadsheets",hd:"gpxlogistique.com",
-    callback:r=>{ if(r.error){ $("who").textContent="Connexion refusée ("+r.error+")."; if(pendingAuth){pendingAuth.rej(new Error("Connexion refusée"));pendingAuth=null;} return; }
-      token=r.access_token; tokenExp=Date.now()+(Number(r.expires_in)||3600)*1000;
-      try{ sessionStorage.setItem("ecor_tok",JSON.stringify({v:token,exp:tokenExp})); }catch(_){}
-      connecte(); if(pendingAuth){pendingAuth.res();pendingAuth=null;} }});
+let token=null, tokenExp=0, onglet=null;
+const REDIRECT=location.origin+location.pathname;
+/* Retour de la connexion Google : le jeton arrive dans l'adresse (#access_token=...) */
+(function(){
+  const h=new URLSearchParams(location.hash.slice(1));
+  if(h.get("access_token")){
+    token=h.get("access_token"); tokenExp=Date.now()+(Number(h.get("expires_in"))||3600)*1000;
+    try{ localStorage.setItem("ecor_tok",JSON.stringify({v:token,exp:tokenExp})); }catch(_){}
+    history.replaceState(null,"",REDIRECT);
+  } else if(h.get("error")){
+    history.replaceState(null,"",REDIRECT);
+    setTimeout(()=>{ $("who").textContent="Connexion refusée ("+h.get("error")+")."; },0);
+  } else {
+    try{ const t=JSON.parse(localStorage.getItem("ecor_tok")||"null"); if(t&&t.exp>Date.now()+60000){ token=t.v; tokenExp=t.exp; } }catch(_){}
+  }
+  try{ const d=localStorage.getItem("ecor_brouillon"); if(d){ localStorage.removeItem("ecor_brouillon"); setTimeout(()=>{ $("dictee").value=d; livePreview(); },0); } }catch(_){}
+})();
+function seConnecter(){
+  try{ if($("dictee").value.trim()) localStorage.setItem("ecor_brouillon",$("dictee").value); }catch(_){}
+  const q=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:REDIRECT,response_type:"token",scope:"https://www.googleapis.com/auth/spreadsheets",hd:"gpxlogistique.com",include_granted_scopes:"true"});
+  location.href="https://accounts.google.com/o/oauth2/v2/auth?"+q.toString();
 }
-initGis();
-function connecte(){ $("who").textContent="Connecté : les lignes s'ajoutent dans ECOR ORLY."; $("btnLogin").textContent="Changer de compte"; charger(); }
-$("btnLogin").onclick=()=>{ if(tokenClient) tokenClient.requestAccessToken({prompt:token?"select_account":""}); };
-function assurerToken(){ // à appeler depuis un clic
+function connecte(){ $("who").textContent="Connecté : les lignes s'ajoutent dans ECOR ORLY (session d'environ 1 h)."; $("btnLogin").textContent="Se reconnecter"; charger(); }
+$("btnLogin").onclick=seConnecter;
+function assurerToken(){
   if(token&&tokenExp>Date.now()+60000) return Promise.resolve();
-  return new Promise((res,rej)=>{ if(!tokenClient) return rej(new Error("Connexion Google pas encore prête, réessayez."));
-    pendingAuth={res,rej}; tokenClient.requestAccessToken({prompt:""}); });
+  token=null; $("who").textContent="Session expirée : touchez « Se connecter avec Google »."; $("btnLogin").textContent="Se connecter avec Google";
+  return Promise.reject(new Error("Session expirée : reconnectez-vous."));
 }
 async function api(url,opt){
   const r=await fetch(url,Object.assign({},opt,{headers:Object.assign({"Authorization":"Bearer "+token,"Content-Type":"application/json"},(opt||{}).headers)}));
   const j=await r.json().catch(()=>({}));
-  if(r.status===401){ token=null; try{sessionStorage.removeItem("ecor_tok")}catch(_){} throw new Error("Session expirée : reconnectez-vous."); }
+  if(r.status===401){ token=null; try{localStorage.removeItem("ecor_tok")}catch(_){} throw new Error("Session expirée : reconnectez-vous."); }
   if(r.status===403) throw new Error("Accès refusé au Sheet : demandez à Louis de vous le partager.");
   if(!r.ok) throw new Error((j.error&&j.error.message)||("Erreur "+r.status));
   return j;
