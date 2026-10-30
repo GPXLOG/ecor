@@ -50,7 +50,11 @@ td.x button{border:none;background:none;color:var(--muted);cursor:pointer;font-s
 .empty{text-align:center;color:var(--muted);padding:18px;font-family:inherit}
 .auth{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
 .who{font-size:.85rem;color:var(--muted)}
-#app[hidden]{display:none}
+.jour{font:600 .9rem ui-monospace,Menlo,Consolas,monospace;background:var(--chip);border-radius:20px;padding:4px 12px}
+.cmds{font-size:.85rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px}
+.cmds b{color:var(--ink);font-weight:600}
+.mode{display:flex;align-items:center;gap:8px;font-size:.9rem;font-weight:600}
+.mode input{width:20px;height:20px;accent-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -63,6 +67,14 @@ td.x button{border:none;background:none;color:var(--muted);cursor:pointer;font-s
   <section class="panel auth">
     <span class="who" id="who">Connectez-vous avec votre compte @gpxlogistique.com pour écrire dans le Sheet.</span>
     <button class="btn primary" id="btnLogin" type="button">Se connecter avec Google</button>
+  </section>
+
+  <section class="panel">
+    <div class="row" style="justify-content:space-between">
+      <span class="jour" id="jour">Aujourd'hui : — colis</span>
+      <label class="mode"><input type="checkbox" id="mainsLibres" checked> Mains libres (commandes vocales)</label>
+    </div>
+    <div class="cmds">Dites à la fin du colis : <span><b>« valider »</b> ou <b>« colis suivant »</b> → enregistre</span><span><b>« annuler »</b> → efface</span><span><b>« supprimer la dernière ligne »</b></span></div>
   </section>
 
   <section class="panel">
@@ -187,13 +199,32 @@ let rec=null, listening=false, base="";
 if(!SR){ $("mic").disabled=true; $("micTxt").textContent="Clavier"; $("st").textContent="Micro intégré indisponible sur ce navigateur : utilisez la touche micro du clavier (ou Windows + H)."; }
 else{
   rec=new SR(); rec.lang="fr-FR"; rec.continuous=true; rec.interimResults=true;
-  rec.onresult=e=>{ let fin="",tmp="";
+  rec.onresult=e=>{ if(parle) return; let fin="",tmp="";
     for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) fin+=r[0].transcript+" "; else tmp+=r[0].transcript; }
-    if(fin) base=(base+" "+fin).replace(/\s+/g," ").trim();
+    if(fin){ base=(base+" "+fin).replace(/\s+/g," ").trim(); if(commande()) return; }
     $("dictee").value=(base+" "+tmp).trim(); livePreview(); };
   rec.onend=()=>{ if(listening){ try{rec.start()}catch(_){} } else setMic(false); };
   rec.onerror=e=>{ if(e.error==="not-allowed"||e.error==="service-not-allowed"){ listening=false; setMic(false);
     $("st").className="status err"; $("st").textContent="Micro refusé : autorisez-le dans le navigateur, ou utilisez la touche micro du clavier."; } };
+}
+/* ---------- Commandes vocales + réponse parlée ---------- */
+let parle=false;
+function dire(txt){
+  try{ if(!window.speechSynthesis) return; speechSynthesis.cancel(); parle=true;
+    const u=new SpeechSynthesisUtterance(txt); u.lang="fr-FR"; u.rate=1.1;
+    u.onend=u.onerror=()=>setTimeout(()=>{parle=false;},350); speechSynthesis.speak(u);
+    setTimeout(()=>{parle=false;},6000);
+  }catch(_){ parle=false; }
+}
+const CMD_VALID=/(?:^|\s)(?:valider|valide|validé|validez|enregistrer|enregistre|c est bon|c'est bon|prochain colis|colis suivant|suivant)[\s\.!,]*$/i;
+const CMD_ANNUL=/(?:^|\s)(?:annuler|annule|effacer|efface|recommencer|recommence)[\s\.!,]*$/i;
+const CMD_SUPPR=/supprime[rz]?\s+(?:la\s+)?derni[eè]re\s+ligne[\s\.!,]*$/i;
+function commande(){
+  if(!$("mainsLibres").checked) return false;
+  if(CMD_SUPPR.test(base)){ base=base.replace(CMD_SUPPR,"").trim(); $("dictee").value=base; livePreview(); supprimerDerniere(); return true; }
+  if(CMD_ANNUL.test(base)){ base=""; $("dictee").value=""; resetTiles(); $("st").className="status"; $("st").textContent="Colis effacé. Dictez le suivant."; dire("Effacé"); return true; }
+  if(CMD_VALID.test(base)){ base=base.replace(CMD_VALID,"").trim(); $("dictee").value=base; livePreview(); ajouter(true); return true; }
+  return false;
 }
 function setMic(on){ $("mic").classList.toggle("on",on); $("micTxt").textContent=on?"Stop":"Parler"; $("mic").setAttribute("aria-label",on?"Arrêter la dictée":"Démarrer la dictée"); }
 $("mic").onclick=()=>{ if(!rec) return;
@@ -242,11 +273,15 @@ const nombre=v=>{ const s=String(v||"").trim().replace(",","."); if(!s) return "
 
 /* ---------- Envoi vers le Sheet ---------- */
 $("btnEffacer").onclick=()=>{ $("dictee").value=""; base=""; resetTiles(); };
-$("btnAjout").onclick=async()=>{
-  if(listening){ listening=false; rec.stop(); setMic(false); }
+$("btnAjout").onclick=()=>ajouter(false);
+let envoiEnCours=false;
+async function ajouter(vocal){
+  if(envoiEnCours) return;
   livePreview();
   const v={}; DICT.forEach(c=>v[c]=tiles[c].inp.value.trim().toUpperCase());
-  if(!DICT.some(c=>v[c])){ $("st").textContent="Dictez d'abord un colis."; return; }
+  if(!DICT.some(c=>v[c])){ $("st").textContent="Dictez d'abord un colis."; if(vocal) dire("Rien à enregistrer"); return; }
+  const manque=DICT.filter(c=>!v[c]).map(c=>LABEL[c].replace(" kg",""));
+  envoiEnCours=true;
   $("btnAjout").disabled=true; $("st").className="status"; $("st").textContent="Envoi au Sheet…";
   try{
     await assurerToken();
@@ -255,11 +290,19 @@ $("btnAjout").onclick=async()=>{
     const row=["",v.TRANSPORTEUR,date,v.EXPEDITEUR,v.DESTINATAIRE,nombre(v.POIDS),nombre(v.LONG),nombre(v.LARG),nombre(v.HAUT),v.DEST,"",v.COMMENTAIRES];
     const j=await api(API+"/values/"+encodeURIComponent(plage(o.titre)+"!A:L")+":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",{method:"POST",body:JSON.stringify({values:[row]})});
     const m=((j.updates||{}).updatedRange||"").match(/!A(\d+)/); freshLigne=m?Number(m[1]):null;
-    $("st").textContent="Ligne "+(freshLigne||"")+" ajoutée au Sheet.";
+    $("st").textContent="Ligne "+(freshLigne||"")+" ajoutée au Sheet."+(manque.length?" Manque : "+manque.join(", ")+".":"");
+    dire("Colis enregistré"+(manque.length?", il manque "+manque.join(", "):"")+". Suivant.");
     $("dictee").value=""; base=""; resetTiles(); charger();
-  }catch(err){ $("st").className="status err"; $("st").textContent="Échec de l'envoi : "+err.message; }
-  $("btnAjout").disabled=false;
-};
+  }catch(err){ $("st").className="status err"; $("st").textContent="Échec de l'envoi : "+err.message; dire("Échec de l'enregistrement. "+(/expir|reconnect/i.test(err.message)?"Reconnectez-vous.":"")); }
+  $("btnAjout").disabled=false; envoiEnCours=false;
+}
+async function supprimerDerniere(){
+  if(!freshLigne){ $("st").textContent="Aucune ligne récente à supprimer."; dire("Aucune ligne à supprimer"); return; }
+  try{ await assurerToken(); const og=await getOnglet();
+    await api(API+":batchUpdate",{method:"POST",body:JSON.stringify({requests:[{deleteDimension:{range:{sheetId:og.id,dimension:"ROWS",startIndex:freshLigne-1,endIndex:freshLigne}}}]})});
+    $("st").textContent="Ligne "+freshLigne+" supprimée."; dire("Dernière ligne supprimée"); freshLigne=null; charger();
+  }catch(err){ $("st").className="status err"; $("st").textContent="Suppression impossible : "+err.message; dire("Suppression impossible"); }
+}
 
 /* ---------- Dernières lignes ---------- */
 async function charger(){
@@ -268,6 +311,9 @@ async function charger(){
     const o=await getOnglet();
     const j=await api(API+"/values/"+encodeURIComponent(plage(o.titre)+"!A1:L"));
     const vals=(j.values||[]); const list=[];
+    const d=new Date(), auj=String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0");
+    const nb=vals.slice(1).filter(r=>String((r||[])[2]||"").trim().startsWith(auj)).length;
+    $("jour").textContent="Aujourd'hui : "+nb+" colis";
     for(let i=vals.length-1;i>=1&&list.length<15;i--){ const r=vals[i]||[]; if(r.some(x=>String(x).trim())) list.push({ligne:i+1,v:SHEET.map((_,k)=>r[k]||"")}); }
     afficher(list);
   }catch(err){ $("tbl").innerHTML=""; const r=$("tbl").insertRow(),c=r.insertCell(); c.className="empty"; c.textContent="Lecture du Sheet impossible : "+err.message; }
