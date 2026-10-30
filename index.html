@@ -156,14 +156,17 @@ function normalise(t){
 }
 function localParse(t){
   const o={}; const s=normalise(t);
-  const find=re=>{const m=s.match(re);return m?m[1].replace(/\s+[,;:\.]\s*$/,"").replace(/\s+([,;:])\s+/g,"$1 ").trim():""};
+  const find=re=>{const m=s.match(re);return m?m[1].replace(/\s+[,;:\.]\s*$/,"").replace(/\s+([,;:])\s+/g,"$1 ").replace(/(?:\s+(?:ou|à|a|et|de|du|la|le|les|en|euh))+\s*$/,"").trim():""};
   const STOP="(?=\\s+(?:transporteur|exp[ée]diteur|destinataire|destination|dest|poids|document|facture|bon de|packing|sans facture|\\d+(?:[.,]\\d+)?\\s*(?:kg|kilos?))\\b|\\s*[,\\.;]|\\s*$)";
   const grab=k=>find(new RegExp(k+"\\s+(.+?)"+STOP));
   o.TRANSPORTEUR=grab("transporteur");
   o.EXPEDITEUR=grab("exp[ée]diteur");
   o.DESTINATAIRE=grab("destinataire");
+  /* « DHL de Clim Cash » : le transporteur suivi de « de » donne l'expéditeur */
+  if(o.TRANSPORTEUR&&/\sde\s/.test(o.TRANSPORTEUR)){ const parts=o.TRANSPORTEUR.split(/\s+de\s+/); o.TRANSPORTEUR=parts.shift(); if(!o.EXPEDITEUR) o.EXPEDITEUR=parts.join(" de "); }
   if(!o.TRANSPORTEUR){ const c=CARRIERS.find(c=>RX(c,"").test(s)); if(c) o.TRANSPORTEUR=c;
     else{ const m=s.match(/^\s*([a-zàâäçéèêëîïôöùûüÿœ][^,\.;\d]{0,25}?)\s*(?:[,\.;]|\s(?=expediteur|destinataire|destination))/); if(m&&!/expediteur|destinataire|destination/.test(m[1])) o.TRANSPORTEUR=m[1].trim(); } }
+  if(o.TRANSPORTEUR&&!o.EXPEDITEUR){ const esc=o.TRANSPORTEUR.replace(/[.*+?^()|[\]\\]/g,"\\$&"); o.EXPEDITEUR=find(new RegExp("(?:^|\\s)"+esc+"\\s+de\\s+(.+?)"+STOP)); }
   const p=s.match(/(\d+(?:[.,]\d+)?)\s*(?:kg|kilos?|kilogrammes?)(?:\s+(\d{1,2})\b(?!\s*(?:par|x|sur)))?/);
   if(p) o.POIDS=NUM(p[1]+(p[2]?","+p[2]:""));
   const d=s.match(/(\d+(?:[.,]\d+)?)\s*(?:par|x|sur)\s*(\d+(?:[.,]\d+)?)\s*(?:par|x|sur)\s*(\d+(?:[.,]\d+)?)/);
@@ -215,14 +218,18 @@ function dire(txt){
     setTimeout(()=>{parle=false;},6000);
   }catch(_){ parle=false; }
 }
-const CMD_VALID=/(?:^|\s)(?:valider|valide|validé|validez|enregistrer|enregistre|c est bon|c'est bon|prochain colis|colis suivant|suivant)[\s\.!,]*$/i;
+/* « valider », « validé prochain », « colis suivant »… reconnus n'importe où dans la phrase */
+const CMD_VALID=/(?<![a-zàâäçéèêëîïôöùûüÿœ])(?:(?:valid(?:er|ez|ée|é|e)|enregistr(?:er|ez|e)|c\s?'?\s?est bon)(?:\s+(?:le\s+)?(?:prochain|suivant)(?:\s+colis)?)?|prochain colis|colis suivant)(?![a-zàâäçéèêëîïôöùûüÿœ])[\s\.!,]*/i;
 const CMD_ANNUL=/(?:^|\s)(?:annuler|annule|effacer|efface|recommencer|recommence)[\s\.!,]*$/i;
 const CMD_SUPPR=/supprime[rz]?\s+(?:la\s+)?derni[eè]re\s+ligne[\s\.!,]*$/i;
 function commande(){
   if(!$("mainsLibres").checked) return false;
   if(CMD_SUPPR.test(base)){ base=base.replace(CMD_SUPPR,"").trim(); $("dictee").value=base; livePreview(); supprimerDerniere(); return true; }
   if(CMD_ANNUL.test(base)){ base=""; $("dictee").value=""; resetTiles(); $("st").className="status"; $("st").textContent="Colis effacé. Dictez le suivant."; dire("Effacé"); return true; }
-  if(CMD_VALID.test(base)){ base=base.replace(CMD_VALID,"").trim(); $("dictee").value=base; livePreview(); ajouter(true); return true; }
+  const m=base.match(CMD_VALID);
+  if(m){ const avant=base.slice(0,m.index).trim(), apres=base.slice(m.index+m[0].length).trim();
+    base=avant; $("dictee").value=avant; livePreview(); ajouter(true);
+    base=apres; $("dictee").value=apres; livePreview(); return true; }
   return false;
 }
 function setMic(on){ $("mic").classList.toggle("on",on); $("micTxt").textContent=on?"Stop":"Parler"; $("mic").setAttribute("aria-label",on?"Arrêter la dictée":"Démarrer la dictée"); }
@@ -291,6 +298,8 @@ async function ajouter(vocal){
   const v={}; DICT.forEach(c=>v[c]=tiles[c].inp.value.trim().toUpperCase());
   if(!DICT.some(c=>v[c])){ $("st").textContent="Dictez d'abord un colis."; if(vocal) dire("Rien à enregistrer"); return; }
   const manque=DICT.filter(c=>!v[c]).map(c=>LABEL[c].replace(" kg",""));
+  const brouillon=$("dictee").value;
+  $("dictee").value=""; base=""; resetTiles();
   envoiEnCours=true;
   $("btnAjout").disabled=true; $("st").className="status"; $("st").textContent="Envoi au Sheet…";
   try{
@@ -302,8 +311,8 @@ async function ajouter(vocal){
     const m=((j.updates||{}).updatedRange||"").match(/!A(\d+)/); freshLigne=m?Number(m[1]):null;
     $("st").textContent="Ligne "+(freshLigne||"")+" ajoutée au Sheet."+(manque.length?" Manque : "+manque.join(", ")+".":"");
     dire("Colis enregistré"+(manque.length?", il manque "+manque.join(", "):"")+". Suivant.");
-    $("dictee").value=""; base=""; resetTiles(); charger();
-  }catch(err){ $("st").className="status err"; $("st").textContent="Échec de l'envoi : "+err.message; dire("Échec de l'enregistrement. "+(/expir|reconnect/i.test(err.message)?"Reconnectez-vous.":"")); }
+    charger();
+  }catch(err){ if(!$("dictee").value.trim()){ $("dictee").value=brouillon; base=brouillon; livePreview(); } $("st").className="status err"; $("st").textContent="Échec de l'envoi : "+err.message; dire("Échec de l'enregistrement. "+(/expir|reconnect/i.test(err.message)?"Reconnectez-vous.":"")); }
   $("btnAjout").disabled=false; envoiEnCours=false;
 }
 async function supprimerDerniere(){
