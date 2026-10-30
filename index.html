@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECOR vocal</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{--bg:#eef1f4;--panel:#fff;--ink:#14202e;--muted:#5b6878;--line:#d5dbe3;--accent:#e8a400;--accent-ink:#1b1300;--head:#cfe2f3;--new:#fff4cc;--warn:#b54708;--rec:#d92d20;--chip:#e6ebf1}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:14px}
+h1{margin:0;font:700 2rem/1 "Arial Narrow",system-ui,sans-serif;text-transform:uppercase;letter-spacing:.02em}
+h1 span{color:var(--accent)}
+.sub{margin:4px 0 0;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;min-width:0}
+.top{display:flex;gap:12px;align-items:stretch}
+#mic{flex:none;width:84px;border:none;border-radius:14px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.8rem;cursor:pointer;display:grid;place-items:center;gap:2px;padding:10px 4px}
+#mic svg{width:30px;height:30px;fill:currentColor}
+#mic.on{background:var(--rec);color:#fff;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(217,45,32,.5)}50%{box-shadow:0 0 0 10px rgba(217,45,32,0)}}
+textarea{flex:1;min-width:0;font:inherit;font-size:1.1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:96px;resize:vertical}
+textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.livehead{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted)}
+.livehead b{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}
+.live{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:6px}
+.tile{border:1px dashed var(--line);border-radius:8px;padding:6px 8px;background:var(--bg);min-width:0;transition:background .2s,border-color .2s}
+.tile b{display:block;font-size:.68rem;letter-spacing:.07em;color:var(--muted);text-transform:uppercase}
+.tile{cursor:text}
+.tile input{display:block;width:100%;border:none;background:transparent;padding:2px 0;font:500 1rem ui-monospace,Menlo,Consolas,monospace;color:var(--ink);text-transform:uppercase}
+.tile input:focus{outline:none}
+.tile:focus-within{border-color:var(--accent);border-style:solid}
+.tile.ok{border-style:solid;border-color:var(--accent);background:var(--new)}
+.tile.pop{animation:pop .35s ease}
+@keyframes pop{40%{transform:scale(1.06)}}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button.btn{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:9px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-size:1.05rem;padding:11px 18px}
+button:disabled{opacity:.5;cursor:default}
+.status{font-size:.85rem;color:var(--muted)}
+.status.err{color:var(--warn)}
+.sheet{overflow:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:.82rem}
+th,td{border:1px solid var(--line);padding:5px 8px;white-space:nowrap;text-align:left}
+th{background:var(--head);font-size:.72rem;letter-spacing:.03em}
+td{font-family:ui-monospace,Menlo,Consolas,monospace}
+td.n{background:var(--chip);color:var(--muted);text-align:center}
+tr.fresh td{background:var(--new)}
+td.x button{border:none;background:none;color:var(--muted);cursor:pointer;font-size:.75rem}
+.empty{text-align:center;color:var(--muted);padding:18px;font-family:inherit}
+.auth{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.who{font-size:.85rem;color:var(--muted)}
+#app[hidden]{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>ECOR <span>vocal</span></h1>
+    <p class="sub">Appuyez sur le micro, dictez le colis : la ligne part directement dans le Google Sheet ECOR ORLY.</p>
+  </div>
+
+  <section class="panel auth">
+    <span class="who" id="who">Connectez-vous avec votre compte @gpxlogistique.com pour écrire dans le Sheet.</span>
+    <button class="btn primary" id="btnLogin" type="button">Se connecter avec Google</button>
+  </section>
+
+  <section class="panel">
+    <div class="top">
+      <button id="mic" type="button" aria-label="Démarrer la dictée">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z"/></svg>
+        <span id="micTxt">Parler</span>
+      </button>
+      <textarea id="dictee" aria-label="Phrase dictée" placeholder="« Transporteur DPD, expéditeur SDMO, destinataire Assistance 97, 6 kilos 6, 40 par 30 par 28, destination PTP, BL »"></textarea>
+    </div>
+    <div class="livehead"><span>Ce que la page comprend — touchez une case pour la corriger ou la dicter seule</span><b id="liveCount">0 / 9</b></div>
+    <div class="live" id="live" aria-live="polite"></div>
+    <div class="row">
+      <button class="btn primary" id="btnAjout">Ajouter au Sheet</button>
+      <button class="btn" id="btnEffacer">Effacer</button>
+      <span class="status" id="st"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="row" style="justify-content:space-between"><strong>Dernières lignes du Sheet</strong><button class="btn" id="btnRefresh">Actualiser</button></div>
+    <div class="sheet"><table id="tbl"></table></div>
+  </section>
+</div>
+
+<script>
+const SHEET=["SCAN TRANSPORTEUR","TRANSPORTEUR","DATE","EXPEDITEUR","DESTINATAIRE","POIDS","LONG","LARG","HAUT","DEST","TRACKING ODOO","COMMENTAIRES"];
+const DICT=["TRANSPORTEUR","EXPEDITEUR","DESTINATAIRE","POIDS","LONG","LARG","HAUT","DEST","COMMENTAIRES"];
+const LABEL={TRANSPORTEUR:"Transporteur",EXPEDITEUR:"Expéditeur",DESTINATAIRE:"Destinataire",POIDS:"Poids kg",LONG:"Long",LARG:"Larg",HAUT:"Haut",DEST:"Dest",COMMENTAIRES:"Document"};
+const $=id=>document.getElementById(id);
+let freshLigne=null;
+
+/* ---------- Lecture de la phrase ---------- */
+const NUM=s=>s?String(s).replace(".",","):"";
+/* Nombres en lettres -> chiffres ("quarante-deux" -> 42, "six virgule cinq" -> 6,5) */
+const UNITS={zero:0,"zéro":0,un:1,une:1,deux:2,trois:3,quatre:4,cinq:5,six:6,sept:7,huit:8,neuf:9,dix:10,onze:11,douze:12,treize:13,quatorze:14,quinze:15,seize:16};
+const TENS={vingt:20,vingts:20,trente:30,quarante:40,cinquante:50,soixante:60};
+function wordsToNumbers(s){
+  const toks=s.replace(/-/g," ").split(/\s+/); const out=[]; let cur=null;
+  const flush=()=>{ if(cur!==null){ out.push(String(cur)); cur=null; } };
+  for(let i=0;i<toks.length;i++){ const w=toks[i];
+    if(w==="et"&&cur!==null&&UNITS[toks[i+1]]!==undefined) continue;
+    if(w==="quatre"&&/^vingts?$/.test(toks[i+1]||"")){ cur=(cur||0)+80; i++; continue; }
+    if(w==="cent"||w==="cents"){ cur=(cur===null||cur===0?1:cur)*100; continue; }
+    if(w==="mille"){ cur=(cur===null||cur===0?1:cur)*1000; continue; }
+    if(TENS[w]!==undefined){ if(cur!==null&&cur%100!==0) flush(); cur=(cur||0)+TENS[w]; continue; }
+    if(UNITS[w]!==undefined){ const u=UNITS[w];
+      if(cur!==null&&(cur%100===60||cur%100===80)&&u>=10){ cur+=u; continue; }
+      if(cur!==null&&cur%10===0&&cur%100!==0&&u<10){ cur+=u; continue; }
+      if(cur!==null&&cur%100===0&&cur>0&&u<100){ cur+=u; continue; }
+      flush(); cur=u; continue; }
+    flush(); out.push(w);
+  }
+  flush();
+  return out.join(" ").replace(/(\d+)\s+virgule\s+(\d+)/g,"$1,$2");
+}
+/* Lettres épelées "s d m o" -> "sdmo" */
+function joinLetters(s){ return s.replace(/\b([a-z])(?:[\s\.]+([a-z])\b)+/g,m=>m.replace(/[\s\.]+/g,"")); }
+/* Bornes de mot qui gèrent les accents (\b ne voit pas « à ») */
+const W="a-z0-9àâäçéèêëîïôöùûüÿœ";
+const RX=(body,flags)=>new RegExp("(?<!["+W+"])(?:"+body+")(?!["+W+"])",flags||"g");
+const TERR="martinique|guadeloupe|guyane|r[ée]union|saint barth[ée]lemy|saint barth|st barth|fort de france|pointe [àa] pitre|cayenne|fdf|ptp|cay|run|sbh";
+const SYN=[
+  /* destination : « pour la Martinique », « vers », « direction », « à destination de » */
+  [RX("(?:pour|vers|direction|part pour|part en|part [àa]|[àa] destination de|en destination de|destination de|destination)\\s+(?:la |le |l |les |de |du |en )?("+TERR+")"), " destination $1 "],
+  /* transporteur */
+  [RX("livr[ée]e?s? par|amen[ée]e?s? par|apport[ée]e?s? par|arriv[ée]e?s? par|d[ée]pos[ée]e?s? par|ramen[ée]e?s? par|transport[ée]e?s? par|via|transporteur|transport"), " transporteur "],
+  /* expéditeur */
+  [RX("(?:il |ça |ca |qui )?vien(?:t|nent) de(?: chez)?|en provenance de|provenance|de la part de|envoy[ée]e?s? par|exp[ée]di[ée]e?s? par|exp[ée]d?iteurs?|envoyeur|fournisseur|fourni par|de chez"), " expediteur "],
+  /* destinataire */
+  [RX("[àa] livrer [àa]|[àa] livrer chez|livr[ée]e?s? [àa]|livr[ée]e?s? chez|[àa] l attention de|pour le compte de|destinataires?|pour|client"), " destinataire "],
+  [RX("kilogrammes?|kilos?|kgs?"), " kg "]
+];
+const CARRIERS=["dpd","tcs","heppner","sovetrans","idlp","chronopost","dhl","ups","fedex","tnt","geodis","schenker","db schenker","gls","colissimo","dachser","kuehne nagel","xpo","ciblex","mory","le francois","sdv","bollore","gefco","ceva","fercam","jet services"];
+function normalise(t){
+  let s=" "+t.toLowerCase().replace(/[’']/g," ").replace(/([,;:!?])(?!\d)/g," $1 ").replace(/\.(?!\d)/g," . ")+" ";
+  s=wordsToNumbers(s); s=joinLetters(s);
+  for(const [re,rep] of SYN) s=s.replace(re,rep);
+  return " "+s.replace(/\s+/g," ").trim()+" ";
+}
+function localParse(t){
+  const o={}; const s=normalise(t);
+  const find=re=>{const m=s.match(re);return m?m[1].replace(/\s+[,;:\.]\s*$/,"").replace(/\s+([,;:])\s+/g,"$1 ").trim():""};
+  const STOP="(?=\\s+(?:transporteur|exp[ée]diteur|destinataire|destination|dest|poids|document|facture|bon de|packing|sans facture|\\d+(?:[.,]\\d+)?\\s*(?:kg|kilos?))\\b|\\s*[,\\.;]|\\s*$)";
+  const grab=k=>find(new RegExp(k+"\\s+(.+?)"+STOP));
+  o.TRANSPORTEUR=grab("transporteur");
+  o.EXPEDITEUR=grab("exp[ée]diteur");
+  o.DESTINATAIRE=grab("destinataire");
+  if(!o.TRANSPORTEUR){ const c=CARRIERS.find(c=>RX(c,"").test(s)); if(c) o.TRANSPORTEUR=c;
+    else{ const m=s.match(/^\s*([a-zàâäçéèêëîïôöùûüÿœ][^,\.;\d]{0,25}?)\s*(?:[,\.;]|\s(?=expediteur|destinataire|destination))/); if(m&&!/expediteur|destinataire|destination/.test(m[1])) o.TRANSPORTEUR=m[1].trim(); } }
+  const p=s.match(/(\d+(?:[.,]\d+)?)\s*(?:kg|kilos?|kilogrammes?)(?:\s+(\d{1,2})\b(?!\s*(?:par|x|sur)))?/);
+  if(p) o.POIDS=NUM(p[1]+(p[2]?","+p[2]:""));
+  const d=s.match(/(\d+(?:[.,]\d+)?)\s*(?:par|x|sur)\s*(\d+(?:[.,]\d+)?)\s*(?:par|x|sur)\s*(\d+(?:[.,]\d+)?)/);
+  if(d){o.LONG=NUM(d[1]);o.LARG=NUM(d[2]);o.HAUT=NUM(d[3]);}
+  const DEST=[[/martinique|fort[- ]de[- ]france|\bf\.? ?d\.? ?f\b/,"FDF"],[/guadeloupe|pointe[- ][àa][- ]pitre|\bp\.? ?t\.? ?p\b/,"PTP"],[/guyane|cayenne|\bc\.? ?a\.? ?y\b/,"CAY"],[/r[ée]union|saint[- ]denis|\br\.? ?u\.? ?n\b/,"RUN"],[/saint[- ]barth|st[- ]barth|\bs\.? ?b\.? ?h\b/,"SBH"]];
+  const zone=(s.match(/destination\s+([^,\.]+)/)||[])[1]||s;
+  o.DEST=(DEST.find(([re])=>re.test(zone))||[])[1]||"";
+  o.COMMENTAIRES=/sans facture|pas de facture|pas de document|sans document|\bs\.? ?f\b|\brien\b|aucun/.test(s)?"SF":/factur|\bfac\b/.test(s)?"FAC":/bon de livraison|\bbl\b|b\.l/.test(s)?"BL":/packing|colisage|\bpl\b|p\.l/.test(s)?"PL":"";
+  return o;
+}
+
+/* ---------- Visuel en direct ---------- */
+const tiles={};
+DICT.forEach(c=>{const t=document.createElement("label");t.className="tile";t.innerHTML="<b></b><input autocomplete=\"off\" placeholder=\"—\">";
+  t.querySelector("b").textContent=LABEL[c]; const inp=t.querySelector("input"); inp.setAttribute("aria-label",LABEL[c]);
+  inp.addEventListener("input",()=>{ tiles[c].manual=inp.value.trim()!==""; t.classList.toggle("ok",inp.value.trim()!==""); compter(); });
+  $("live").appendChild(t); tiles[c]={el:t,inp,val:"",manual:false};});
+function compter(){ const n=DICT.filter(c=>tiles[c].inp.value.trim()).length; $("liveCount").textContent=n+" / "+DICT.length; }
+function livePreview(){
+  const o=localParse($("dictee").value||"");
+  DICT.forEach(c=>{const t=tiles[c]; if(t.manual) return; const v=String(o[c]||"").toUpperCase();
+    if(v!==t.val){ t.val=v; t.inp.value=v; t.el.classList.toggle("ok",!!v);
+      if(v){t.el.classList.remove("pop");void t.el.offsetWidth;t.el.classList.add("pop");} } });
+  compter();
+}
+function resetTiles(){ DICT.forEach(c=>{const t=tiles[c]; t.manual=false; t.val=""; t.inp.value=""; t.el.classList.remove("ok");}); compter(); }
+$("dictee").addEventListener("input",livePreview);
+
+/* ---------- Micro (reconnaissance vocale du navigateur) ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null, listening=false, base="";
+if(!SR){ $("mic").disabled=true; $("micTxt").textContent="Clavier"; $("st").textContent="Micro intégré indisponible sur ce navigateur : utilisez la touche micro du clavier (ou Windows + H)."; }
+else{
+  rec=new SR(); rec.lang="fr-FR"; rec.continuous=true; rec.interimResults=true;
+  rec.onresult=e=>{ let fin="",tmp="";
+    for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) fin+=r[0].transcript+" "; else tmp+=r[0].transcript; }
+    if(fin) base=(base+" "+fin).replace(/\s+/g," ").trim();
+    $("dictee").value=(base+" "+tmp).trim(); livePreview(); };
+  rec.onend=()=>{ if(listening){ try{rec.start()}catch(_){} } else setMic(false); };
+  rec.onerror=e=>{ if(e.error==="not-allowed"||e.error==="service-not-allowed"){ listening=false; setMic(false);
+    $("st").className="status err"; $("st").textContent="Micro refusé : autorisez-le dans le navigateur, ou utilisez la touche micro du clavier."; } };
+}
+function setMic(on){ $("mic").classList.toggle("on",on); $("micTxt").textContent=on?"Stop":"Parler"; $("mic").setAttribute("aria-label",on?"Arrêter la dictée":"Démarrer la dictée"); }
+$("mic").onclick=()=>{ if(!rec) return;
+  if(listening){ listening=false; rec.stop(); setMic(false); return; }
+  base=$("dictee").value.trim(); listening=true; setMic(true); $("st").className="status"; $("st").textContent="Je vous écoute…";
+  try{ rec.start(); }catch(_){}
+};
+
+/* ---------- Connexion Google + API Sheets ---------- */
+const CLIENT_ID="253065620481-rd4g7k7uck1qjdosc6jojuiq6f8tabte.apps.googleusercontent.com";
+const SHEET_ID="1vRpJ30Rp5iH9rhvMJ0o5VENc8wUInDtWmgblMwHQ4WQ";
+const API="https://sheets.googleapis.com/v4/spreadsheets/"+SHEET_ID;
+let token=null, tokenExp=0, tokenClient=null, onglet=null, pendingAuth=null;
+try{ const t=JSON.parse(sessionStorage.getItem("ecor_tok")||"null"); if(t&&t.exp>Date.now()+60000){ token=t.v; tokenExp=t.exp; } }catch(_){}
+function initGis(){
+  if(!(window.google&&google.accounts&&google.accounts.oauth2)){ setTimeout(initGis,200); return; }
+  tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:"https://www.googleapis.com/auth/spreadsheets",hd:"gpxlogistique.com",
+    callback:r=>{ if(r.error){ $("who").textContent="Connexion refusée ("+r.error+")."; if(pendingAuth){pendingAuth.rej(new Error("Connexion refusée"));pendingAuth=null;} return; }
+      token=r.access_token; tokenExp=Date.now()+(Number(r.expires_in)||3600)*1000;
+      try{ sessionStorage.setItem("ecor_tok",JSON.stringify({v:token,exp:tokenExp})); }catch(_){}
+      connecte(); if(pendingAuth){pendingAuth.res();pendingAuth=null;} }});
+}
+initGis();
+function connecte(){ $("who").textContent="Connecté : les lignes s'ajoutent dans ECOR ORLY."; $("btnLogin").textContent="Changer de compte"; charger(); }
+$("btnLogin").onclick=()=>{ if(tokenClient) tokenClient.requestAccessToken({prompt:token?"select_account":""}); };
+function assurerToken(){ // à appeler depuis un clic
+  if(token&&tokenExp>Date.now()+60000) return Promise.resolve();
+  return new Promise((res,rej)=>{ if(!tokenClient) return rej(new Error("Connexion Google pas encore prête, réessayez."));
+    pendingAuth={res,rej}; tokenClient.requestAccessToken({prompt:""}); });
+}
+async function api(url,opt){
+  const r=await fetch(url,Object.assign({},opt,{headers:Object.assign({"Authorization":"Bearer "+token,"Content-Type":"application/json"},(opt||{}).headers)}));
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401){ token=null; try{sessionStorage.removeItem("ecor_tok")}catch(_){} throw new Error("Session expirée : reconnectez-vous."); }
+  if(r.status===403) throw new Error("Accès refusé au Sheet : demandez à Louis de vous le partager.");
+  if(!r.ok) throw new Error((j.error&&j.error.message)||("Erreur "+r.status));
+  return j;
+}
+async function getOnglet(){
+  if(onglet) return onglet;
+  const j=await api(API+"?fields=sheets.properties(sheetId,title)");
+  const p=j.sheets[0].properties; onglet={id:p.sheetId,titre:p.title}; return onglet;
+}
+const plage=t=>"'"+t.replace(/'/g,"''")+"'";
+const nombre=v=>{ const s=String(v||"").trim().replace(",","."); if(!s) return ""; const n=Number(s); return isNaN(n)?String(v):n; };
+
+/* ---------- Envoi vers le Sheet ---------- */
+$("btnEffacer").onclick=()=>{ $("dictee").value=""; base=""; resetTiles(); };
+$("btnAjout").onclick=async()=>{
+  if(listening){ listening=false; rec.stop(); setMic(false); }
+  livePreview();
+  const v={}; DICT.forEach(c=>v[c]=tiles[c].inp.value.trim().toUpperCase());
+  if(!DICT.some(c=>v[c])){ $("st").textContent="Dictez d'abord un colis."; return; }
+  $("btnAjout").disabled=true; $("st").className="status"; $("st").textContent="Envoi au Sheet…";
+  try{
+    await assurerToken();
+    const o=await getOnglet();
+    const d=new Date(), date="'"+String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0");
+    const row=["",v.TRANSPORTEUR,date,v.EXPEDITEUR,v.DESTINATAIRE,nombre(v.POIDS),nombre(v.LONG),nombre(v.LARG),nombre(v.HAUT),v.DEST,"",v.COMMENTAIRES];
+    const j=await api(API+"/values/"+encodeURIComponent(plage(o.titre)+"!A:L")+":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",{method:"POST",body:JSON.stringify({values:[row]})});
+    const m=((j.updates||{}).updatedRange||"").match(/!A(\d+)/); freshLigne=m?Number(m[1]):null;
+    $("st").textContent="Ligne "+(freshLigne||"")+" ajoutée au Sheet.";
+    $("dictee").value=""; base=""; resetTiles(); charger();
+  }catch(err){ $("st").className="status err"; $("st").textContent="Échec de l'envoi : "+err.message; }
+  $("btnAjout").disabled=false;
+};
+
+/* ---------- Dernières lignes ---------- */
+async function charger(){
+  if(!token){ $("tbl").innerHTML='<tr><td class="empty">Connectez-vous pour voir les dernières lignes.</td></tr>'; return; }
+  try{
+    const o=await getOnglet();
+    const j=await api(API+"/values/"+encodeURIComponent(plage(o.titre)+"!A1:L"));
+    const vals=(j.values||[]); const list=[];
+    for(let i=vals.length-1;i>=1&&list.length<15;i--){ const r=vals[i]||[]; if(r.some(x=>String(x).trim())) list.push({ligne:i+1,v:SHEET.map((_,k)=>r[k]||"")}); }
+    afficher(list);
+  }catch(err){ $("tbl").innerHTML=""; const r=$("tbl").insertRow(),c=r.insertCell(); c.className="empty"; c.textContent="Lecture du Sheet impossible : "+err.message; }
+}
+function afficher(list){
+  const t=$("tbl"); t.innerHTML="";
+  const h=t.insertRow(); ["#",...SHEET,""].forEach(c=>{const th=document.createElement("th");th.textContent=c;h.appendChild(th)});
+  if(!list.length){const r=t.insertRow(),c=r.insertCell();c.colSpan=SHEET.length+2;c.className="empty";c.textContent="Le Sheet est vide.";return;}
+  list.forEach(o=>{ const r=t.insertRow(); if(o.ligne===freshLigne) r.className="fresh";
+    const n=r.insertCell(); n.className="n"; n.textContent=o.ligne;
+    o.v.forEach(x=>r.insertCell().textContent=x);
+    const x=r.insertCell(); x.className="x";
+    if(o.ligne===freshLigne){ const b=document.createElement("button"); b.textContent="Annuler cet ajout";
+      let armed=false; b.onclick=async()=>{ if(!armed){armed=true;b.textContent="Confirmer ?";setTimeout(()=>{armed=false;b.textContent="Annuler cet ajout"},3000);return;}
+        try{ await assurerToken(); const og=await getOnglet();
+          await api(API+":batchUpdate",{method:"POST",body:JSON.stringify({requests:[{deleteDimension:{range:{sheetId:og.id,dimension:"ROWS",startIndex:o.ligne-1,endIndex:o.ligne}}}]})});
+          freshLigne=null; $("st").textContent="Ligne supprimée."; charger(); }catch(err){ $("st").className="status err"; $("st").textContent="Suppression impossible : "+err.message; } };
+      x.appendChild(b); }
+  });
+}
+$("btnRefresh").onclick=charger;
+livePreview(); if(token) connecte(); else charger();
+</script>
+</body>
+</html>
